@@ -1,0 +1,47 @@
+service: mood-music-backend
+
+provider:
+  name: aws
+  runtime: python3.7
+  environment:
+    DYNAMODB_TABLE: ${self:service}-${opt:stage, self:provider.stage}
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - dynamodb:Query
+        - dynamodb:Scan
+        - dynamodb:GetItem
+        - dynamodb:PutItem
+        - dynamodb:UpdateItem
+        - dynamodb:DeleteItem
+      Resource: "arn:aws:dynamodb:${opt:region, self:provider.region}:*:table/${self:provider.environment.DYNAMODB_TABLE}"
+
+functions:
+  create:
+    handler: src/SaveLabelsFunction/function.handler
+    reservedConcurrency: 5
+    events:
+      - http:
+          path: labels
+          method: post
+          cors: true
+
+resources:
+  Resources:
+    LabelsDynamoDbTable:
+      Type: 'AWS::DynamoDB::Table'
+      Properties:
+        AttributeDefinitions:
+          - AttributeName: imageId
+            AttributeType: S
+          - AttributeName: uuid
+            AttributeType: S
+        KeySchema:
+          - AttributeName: imageId
+            KeyType: HASH
+          - AttributeName: uuid
+            KeyType: RANGE
+        ProvisionedThroughput:
+          ReadCapacityUnits: 10
+          WriteCapacityUnits: 10
+        TableName: ${self:provider.environment.DYNAMODB_TABLE}
