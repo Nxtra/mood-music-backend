@@ -13,7 +13,7 @@ dynamodb = boto3.resource('dynamodb')
 def handler(event, context):
     data = json.loads(event['body'])
 
-    if 'label' not in data or 'imageId' not in data:
+    if 'label' not in data or 'imageId' not in data or 'author' not in data:
         logging.error("Validation Failed")
         response_body = {
             "message": "Missing required fields"
@@ -37,17 +37,18 @@ def handler(event, context):
 
 
 def save_item(item):
-    table = dynamodb.Table(os.environ['DYNAMODB_TABLE'])
-    table.put_item(Item=item)
+    table = dynamodb.Table(os.environ['LABELLING_DYNAMODB_TABLE'])
+    result = table.put_item(Item=item)
+    print(result)
 
 
 def make_item_to_save(data):
     timestamp = str(int(round(time.time() * 1000)))
     item = {
         'imageId': data['imageId'],
-        'uuid': str(uuid.uuid4()),
+        'author': data['author'],
         'label': data['label'],
-        'checked': False,
+        'uuid': str(uuid.uuid4()),
         'createdAt': timestamp,
         'updatedAt': timestamp,
     }

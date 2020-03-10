@@ -1,10 +1,14 @@
 service: mood-music-backend
 
+plugins:
+  - serverless-iam-roles-per-function
+
 provider:
   name: aws
   runtime: python3.7
+  region: eu-west-1
   environment:
-    DYNAMODB_TABLE: ${self:service}-${opt:stage, self:provider.stage}
+    LABELLING_DYNAMODB_TABLE: ${self:service}-${opt:stage, self:provider.stage}-ImageLabelTable
   iamRoleStatements:
     - Effect: Allow
       Action:
@@ -14,10 +18,13 @@ provider:
         - dynamodb:PutItem
         - dynamodb:UpdateItem
         - dynamodb:DeleteItem
-      Resource: "arn:aws:dynamodb:${opt:region, self:provider.region}:*:table/${self:provider.environment.DYNAMODB_TABLE}"
+        - dynamodb:GetRecords
+        - dynamodb:GetShardIterator
+        - dynamodb:ListStreams
+      Resource: "arn:aws:dynamodb:${opt:region, self:provider.region}:*:table/${self:provider.environment.LABELLING_DYNAMODB_TABLE}"
 
 functions:
-  create:
+  saveLabelFunction:
     handler: src/SaveLabelsFunction/function.handler
     reservedConcurrency: 5
     events:
@@ -25,6 +32,55 @@ functions:
           path: labels
           method: post
           cors: true
+  getDataAsJsonFunction:
+    handler: src/GetDataAsJsonFunction/function.handler
+    runtime: nodejs12.x
+    reservedConcurrency: 1
+    environment:
+      IMAGE_DATA_DYNAMODB_TABLE: !Ref ImageDataTable
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:Query
+          - dynamodb:Scan
+          - dynamodb:GetItem
+        Resource: !GetAtt ImageDataTable.Arn
+    events:
+      - http:
+          path: labels
+          method: get
+          cors: true
+  dataAggregatorFunction:
+    handler: src/DataAggregatorFunction/function.handler
+    environment:
+      FEATURES_DYNAMODB_TABLE: ImageFeaturesTable
+      IMAGE_DATA_DYNAMODB_TABLE: !Ref ImageDataTable
+    iamRoleStatementsInherit: true
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:Query
+          - dynamodb:Scan
+          - dynamodb:GetItem
+        Resource:
+          - arn:aws:dynamodb:eu-west-1:262262740757:table/ImageFeaturesTable
+      - Effect: Allow
+        Action:
+          - dynamodb:PutItem
+          - dynamodb:UpdateItem
+        Resource: !GetAtt ImageDataTable.Arn
+    events:
+       - stream:
+           type: dynamodb
+           arn:
+            Fn::GetAtt:
+              - LabelsDynamoDbTable
+              - StreamArn
+           batchSize: 1
+           startingPosition: LATEST
+           maximumRetryAttempts: 1
+           enabled: true
+
 
 resources:
   Resources:
@@ -34,14 +90,33 @@ resources:
         AttributeDefinitions:
           - AttributeName: imageId
             AttributeType: S
-          - AttributeName: uuid
+          - AttributeName: author
             AttributeType: S
         KeySchema:
           - AttributeName: imageId
             KeyType: HASH
-          - AttributeName: uuid
+          - AttributeName: author
             KeyType: RANGE
         ProvisionedThroughput:
-          ReadCapacityUnits: 10
-          WriteCapacityUnits: 10
-        TableName: ${self:provider.environment.DYNAMODB_TABLE}
+          ReadCapacityUnits: 5
+          WriteCapacityUnits: 5
+        StreamSpecification:
+          StreamViewType: NEW_AND_OLD_IMAGES
+        TableName: ${self:provider.environment.LABELLING_DYNAMODB_TABLE}
+    ImageDataTable:
+      Type: 'AWS::DynamoDB::Table'
+      Properties:
+        AttributeDefinitions:
+          - AttributeName: imageId
+            AttributeType: S
+          - AttributeName: author
+            AttributeType: S
+        KeySchema:
+          - AttributeName: imageId
+            KeyType: HASH
+          - AttributeName: author
+            KeyType: RANGE
+        ProvisionedThroughput:
+          ReadCapacityUnits: 5
+          WriteCapacityUnits: 5
+        TableName: ${self:service}-${opt:stage, self:provider.stage}-ImageDataTable
