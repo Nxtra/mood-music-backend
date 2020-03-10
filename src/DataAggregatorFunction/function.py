@@ -48,6 +48,8 @@ def aggregate_features_and_label_data(image_features, label, author, uuid):
         'HAPPY': image_features.get('HAPPY'),
         'CALM': image_features.get('CALM'),
         'FEAR': image_features.get('FEAR'),
+        'ANGRY': image_features.get('ANGRY'),
         'SAD': image_features.get('SAD'),
+        'UNKNOWN': image_features.get('UNKNOWN'),
         'label': label
     })

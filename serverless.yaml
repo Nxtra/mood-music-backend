@@ -47,7 +47,7 @@ functions:
         Resource: !GetAtt ImageDataTable.Arn
     events:
       - http:
-          path: labels
+          path: data
           method: get
           cors: true
   dataAggregatorFunction:
